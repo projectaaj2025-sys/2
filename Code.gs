@@ -2,6 +2,7 @@
 const SHEET_ID = 'ВАШ_ID_ГУГЛ_ТАБЛИЦЫ'; // <-- ЗАМЕНИТЕ НА ID ВАШЕЙ ТАБЛИЦЫ
 const QUESTIONS_SHEET = 'Questions';
 const RESULTS_SHEET = 'Results';
+const SETTINGS_SHEET = 'Settings';
 
 // ==================== CORS ====================
 function doGet(e) {
@@ -11,6 +12,8 @@ function doGet(e) {
     return getQuestions();
   } else if (action === 'getResults') {
     return getResults();
+  } else if (action === 'getSettings') {
+    return getSettings();
   }
 
   return jsonResponse({error: 'Unknown action'});
@@ -21,6 +24,8 @@ function doPost(e) {
 
   if (data.action === 'saveResult') {
     return saveResult(data);
+  } else if (data.action === 'saveSettings') {
+    return saveSettings(data);
   }
 
   return jsonResponse({success: true});
@@ -33,6 +38,58 @@ function doOptions(e) {
 function jsonResponse(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ==================== НАСТРОЙКИ ====================
+function getSettings() {
+  try {
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    let sheet = ss.getSheetByName(SETTINGS_SHEET);
+
+    if (!sheet) {
+      // Создаём лист настроек по умолчанию
+      sheet = ss.insertSheet(SETTINGS_SHEET);
+      sheet.appendRow(['Key', 'Value']);
+      sheet.appendRow(['allowRetake', 'true']);
+      sheet.appendRow(['testTitle', 'Тестирование']);
+      sheet.appendRow(['timeMinutes', '30']);
+      sheet.appendRow(['questionsCount', '30']);
+    }
+
+    const data = sheet.getDataRange().getValues();
+    const settings = {};
+    for (let i = 1; i < data.length; i++) {
+      settings[data[i][0]] = data[i][1];
+    }
+
+    return jsonResponse(settings);
+  } catch (error) {
+    return jsonResponse({allowRetake: 'true', error: error.toString()});
+  }
+}
+
+function saveSettings(data) {
+  try {
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    let sheet = ss.getSheetByName(SETTINGS_SHEET);
+
+    if (!sheet) {
+      sheet = ss.insertSheet(SETTINGS_SHEET);
+      sheet.appendRow(['Key', 'Value']);
+    }
+
+    // Очищаем и перезаписываем
+    sheet.clear();
+    sheet.appendRow(['Key', 'Value']);
+
+    for (const [key, value] of Object.entries(data.settings)) {
+      sheet.appendRow([key, value]);
+    }
+
+    return jsonResponse({success: true});
+  } catch (error) {
+    return jsonResponse({error: error.toString()});
+  }
 }
 
 // ==================== ЗАГРУЗКА ВОПРОСОВ ====================
@@ -57,7 +114,6 @@ function getQuestions() {
         question[header] = value !== undefined && value !== null ? String(value) : '';
       });
 
-      // Проверяем минимальные поля
       if (question.question && question.question.trim() !== '') {
         questions.push(question);
       }
@@ -75,10 +131,9 @@ function saveResult(data) {
     const ss = SpreadsheetApp.openById(SHEET_ID);
     let sheet = ss.getSheetByName(RESULTS_SHEET);
 
-    // Если листа Results нет — создаём
     if (!sheet) {
       sheet = ss.insertSheet(RESULTS_SHEET);
-      sheet.appendRow(['Timestamp', 'Name', 'Score', 'Total', 'Percent', 'TimeSpent', 'Answers', 'Questions']);
+      sheet.appendRow(['Timestamp', 'Name', 'Score', 'Total', 'Percent', 'TimeSpent', 'Device', 'Answers', 'Questions']);
     }
 
     sheet.appendRow([
@@ -88,6 +143,7 @@ function saveResult(data) {
       data.total || 0,
       data.percent || 0,
       data.timeSpent || 0,
+      data.device || 'unknown',
       JSON.stringify(data.answers || {}),
       JSON.stringify(data.questions || [])
     ]);
